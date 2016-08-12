@@ -19,7 +19,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.1'
+__version__ = '0.0.3'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -52,6 +52,7 @@ class VPN:
     min_time_before_reconnect = 30
     one_connection_per_conf = True
     req_timeout = 3
+    route_up_script = '/local/bin/route_up.sh'
     vpn_process = None
 
 
@@ -174,10 +175,9 @@ class VPN:
                                          '--route-noexec '
                                          '--auth-nocache '
                                          '--script-security 2 '
-                                         '--route-up %s/route_up.sh'
+                                         '--route-up %s'
                                          % (self.conf_file,
-                                            os.path.dirname(
-                                                os.path.realpath(__file__))),
+                                            self.route_up_script)
                                          cwd=self.conf_dir,
                                          timeout=self.connect_timeout)
 
