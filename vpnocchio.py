@@ -7,9 +7,11 @@ import os
 import random
 import re
 import socket
+import stat
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 import pexpect
@@ -19,11 +21,19 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.5'
+__version__ = '0.0.7'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
 logging.getLogger("requests").setLevel(logging.WARNING)
+
+ROUTE_UP_SCRIPT = """#!/bin/sh
+table_id=2`echo $dev | cut -c 4-24`
+ip route add default via $route_vpn_gateway dev $dev table $table_id
+ip rule add from $ifconfig_local table $table_id
+ip rule add to $route_vpn_gateway table $table_id
+ip route flush cache
+exit 0"""
 
 
 
@@ -52,7 +62,7 @@ class VPN:
     min_time_before_reconnect = 30
     one_connection_per_conf = True
     req_timeout = 3
-    route_up_script = '/local/bin/route_up.sh'
+    route_up_script = None
     vpn_process = None
 
 
@@ -170,6 +180,7 @@ class VPN:
 
 
     def connect(self):
+        self.create_route_up_script()
         self.vpn_process = pexpect.spawn('sudo openvpn '
                                          '--config %s '
                                          '--route-noexec '
@@ -197,11 +208,28 @@ class VPN:
             self._get_interface_addr()
             self.log.debug('Interface addr: %s', self.interface_addr)
             self.connected = time.time()
-            return True
         except pexpect.EOF:
             self.log.error('Invalid username and/or password')
         except pexpect.TIMEOUT:
             self.log.error('Connection failed!')
+        finally:
+            self.delete_route_up_script()
+
+
+    def create_route_up_script(self):
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            self.route_up_script = f.name
+            f.write(ROUTE_UP_SCRIPT)
+        st = os.stat(self.route_up_script)
+        os.chmod(self.route_up_script, st.st_mode |\
+                                       stat.S_IXUSR |\
+                                       stat.S_IXGRP |\
+                                       stat.S_IXOTH)
+
+
+    def delete_route_up_script(self):
+        os.remove(self.route_up_script)
+        self.route_up_script = None
 
 
     def get(self, *args, **kwargs):

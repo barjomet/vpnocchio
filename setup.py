@@ -1,6 +1,6 @@
 from distutils.core import setup
 
-VERSION = "0.0.5"
+VERSION = "0.0.7"
 
 long_description = """How to use::
 
@@ -44,7 +44,6 @@ setup(name='VPNocchio',
     author = "Oleksii Ivanchuk",
     author_email = "barjomet@barjomet.com",
     keywords = ["vpn", "proxy"],
-    data_files=[('local/bin/', ['route_up.sh'])],
     py_modules=['vpnocchio'],
     install_requires=['pexpect',
                       'requests',
