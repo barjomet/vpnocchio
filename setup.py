@@ -1,6 +1,6 @@
 from distutils.core import setup
 
-VERSION = "0.0.3"
+VERSION = "0.0.5"
 
 long_description = """How to use::
 
@@ -48,7 +48,8 @@ setup(name='VPNocchio',
     py_modules=['vpnocchio'],
     install_requires=['pexpect',
                       'requests',
-                      'requests_toolbelt'],
+                      'requests_toolbelt',
+                      'user_agent'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',

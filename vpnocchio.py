@@ -19,7 +19,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.3'
+__version__ = '0.0.5'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -177,7 +177,7 @@ class VPN:
                                          '--script-security 2 '
                                          '--route-up %s'
                                          % (self.conf_file,
-                                            self.route_up_script)
+                                            self.route_up_script),
                                          cwd=self.conf_dir,
                                          timeout=self.connect_timeout)
 
