@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.7'
+__version__ = '0.0.8'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -199,12 +199,12 @@ class VPN:
                 self.vpn_process.expect('Enter Auth Password:')
                 self.vpn_process.sendline(self.password)
 
-            self.log.debug('Connecting using config:%s', self.conf_file)
+            self.log.info('Connecting using config:%s', self.conf_file)
             self.vpn_process.expect('.* TUN/TAP device (.*) opened')
             self.interface = self.vpn_process.match.group(1)
             self.log.debug('Interface: %s', self.interface)
             self.vpn_process.expect('Initialization Sequence Completed')
-            self.log.debug('Connected')
+            self.log.info('Connected')
             self._get_interface_addr()
             self.log.debug('Interface addr: %s', self.interface_addr)
             self.connected = time.time()
@@ -247,7 +247,7 @@ class VPN:
                     except ptyprocess.ptyprocess.PtyProcessError:
                         pass
                     time.sleep(0.1)
-                self.log.debug('Disconnected')
+                self.log.info('Disconnected')
             except ValueError:
                 subprocess.call(['sudo', 'kill', str(self.vpn_process.pid)])
 
