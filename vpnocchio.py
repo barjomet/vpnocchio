@@ -84,12 +84,7 @@ class VPN:
         self.useragent = useragent
 
         self._get_conf_files(conf_match or self.conf_match)
-        if self._select_conf_file():
-            self.instances.insert(self.id, self)
-            self.connect()
-            self._init_requests()
-            self.check_ip()
-
+        self.connect()
 
     def __repr__(self):
         return ("<VPNocchio id:%s conf:%s ip:%s>"
@@ -193,35 +188,39 @@ class VPN:
 
 
     def connect(self):
+        if self.connected: self.disconnect()
         self.create_route_up_script()
-        self.vpn_process = pexpect.spawn(self.cmd,
-                                         cwd=self.conf_dir,
-                                         timeout=self.connect_timeout)
+        while not self.connected and self._select_conf_file():
+            self.vpn_process = pexpect.spawn(self.cmd,
+                                             cwd=self.conf_dir,
+                                             timeout=self.connect_timeout)
 
-        try:
-            if self.username and self.password:
-                self.vpn_process.expect('Enter Auth Username:')
-                self.vpn_process.sendline(self.username)
-                self.vpn_process.expect('Enter Auth Password:')
-                self.vpn_process.sendline(self.password)
+            try:
+                if self.username and self.password:
+                    self.vpn_process.expect('Enter Auth Username:')
+                    self.vpn_process.sendline(self.username)
+                    self.vpn_process.expect('Enter Auth Password:')
+                    self.vpn_process.sendline(self.password)
 
-            self.log.info('Connecting using config:%s', self.conf_file)
-            self.vpn_process.expect('.* TUN/TAP device (.*) opened')
-            self.interface = self.vpn_process.match.group(1)
-            self.log.debug('Interface: %s', self.interface)
-            self.vpn_process.expect('Initialization Sequence Completed')
-            self.log.info('Connected')
-            self._get_interface_addr()
-            self.log.debug('Interface addr: %s', self.interface_addr)
-            self.connected = time.time()
-        except pexpect.EOF:
-            self.log.debug(self.vpn_process.before)
-            self.log.error('Invalid username and/or password')
-        except pexpect.TIMEOUT:
-            self.log.debug(self.vpn_process.before)
-            self.log.error('Connection failed!')
-        finally:
-            self.delete_route_up_script()
+                self.log.info('Connecting using config:%s', self.conf_file)
+                self.vpn_process.expect('.* TUN/TAP device (.*) opened')
+                self.interface = self.vpn_process.match.group(1)
+                self.log.debug('Interface: %s', self.interface)
+                self.vpn_process.expect('Initialization Sequence Completed')
+                self.log.info('Connected')
+                self._get_interface_addr()
+                self.log.debug('Interface addr: %s', self.interface_addr)
+                self.connected = time.time()
+            except pexpect.EOF:
+                self.log.debug(self.vpn_process.before)
+                self.log.error('Invalid username and/or password')
+            except pexpect.TIMEOUT:
+                self.log.debug(self.vpn_process.before)
+                self.log.error('Connection failed!')
+        self.delete_route_up_script()
+        self.instances.insert(self.id, self)
+        self._init_requests()
+        self.check_ip()
 
 
     def create_route_up_script(self):
@@ -255,6 +254,8 @@ class VPN:
                     except ptyprocess.ptyprocess.PtyProcessError:
                         pass
                     time.sleep(0.1)
+                self.connected = 0
+                self.instances.remove(self)
                 self.log.info('Disconnected')
             except ValueError:
                 subprocess.call(['sudo', 'kill', str(self.vpn_process.pid)])
@@ -270,10 +271,7 @@ class VPN:
                                  seconds_to_wait)
                 time.sleep(seconds_to_wait)
         self.disconnect()
-        self._select_conf_file()
         self.connect()
-        self._init_requests()
-        self.check_ip()
 
 
 
