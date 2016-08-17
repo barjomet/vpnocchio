@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.8'
+__version__ = '0.0.11'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -59,6 +59,7 @@ class VPN:
     ]
     log = logging.getLogger(__name__)
     log.addHandler(logging.NullHandler())
+    mask_mtu = False
     min_time_before_reconnect = 30
     one_connection_per_conf = True
     req_timeout = 3
@@ -106,6 +107,18 @@ class VPN:
                 return True
         else:
             return True
+
+
+    @property
+    def cmd(self):
+        return ('sudo openvpn --config %s '
+                '%s '
+                '--route-noexec --auth-nocache '
+                '--script-security 2 --route-up %s'
+                % (self.conf_file,
+                   '--mssfix 1363' if self.mask_mtu \
+                   else '',
+                   self.route_up_script))
 
 
     def _get_id(self):
@@ -181,14 +194,7 @@ class VPN:
 
     def connect(self):
         self.create_route_up_script()
-        self.vpn_process = pexpect.spawn('sudo openvpn '
-                                         '--config %s '
-                                         '--route-noexec '
-                                         '--auth-nocache '
-                                         '--script-security 2 '
-                                         '--route-up %s'
-                                         % (self.conf_file,
-                                            self.route_up_script),
+        self.vpn_process = pexpect.spawn(self.cmd,
                                          cwd=self.conf_dir,
                                          timeout=self.connect_timeout)
 
@@ -209,8 +215,10 @@ class VPN:
             self.log.debug('Interface addr: %s', self.interface_addr)
             self.connected = time.time()
         except pexpect.EOF:
+            self.log.debug(self.vpn_process.before)
             self.log.error('Invalid username and/or password')
         except pexpect.TIMEOUT:
+            self.log.debug(self.vpn_process.before)
             self.log.error('Connection failed!')
         finally:
             self.delete_route_up_script()
