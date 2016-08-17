@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.11'
+__version__ = '0.0.12'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -261,13 +261,14 @@ class VPN:
 
 
     def new_ip(self):
-        seconds_since_last_connect = time.time() - self.connected
-        if seconds_since_last_connect < 30:
-            seconds_to_wait = self.min_time_before_reconnect \
-                              - seconds_since_last_connect
-            self.log.warning("We'll wait %3.1f seconds before reconnect",
-                             seconds_to_wait)
-            time.sleep(seconds_to_wait)
+        if self.min_time_before_reconnect:
+            seconds_since_last_connect = time.time() - self.connected
+            if seconds_since_last_connect < self.min_time_before_reconnect:
+                seconds_to_wait = self.min_time_before_reconnect \
+                                  - seconds_since_last_connect
+                self.log.warning("We'll wait %3.1f seconds before reconnect",
+                                 seconds_to_wait)
+                time.sleep(seconds_to_wait)
         self.disconnect()
         self._select_conf_file()
         self.connect()
