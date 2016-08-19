@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.13'
+__version__ = '0.0.14'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -73,11 +73,17 @@ class VPN:
     def __init__(self, username=None,
                        password=None,
                        conf_match=None,
+                       default_route=False,
+                       mask_mtu=False,
+                       timeout=None,
                        id=None,
                        useragent=None):
 
         if id != None: self.id = id
         else: self.id = self._get_id()
+        self.default_route = default_route
+        if mask_mtu: self.mask_mtu = True
+        if timeout: self.timeout = timeout
 
         self._init_logging()
 
@@ -109,14 +115,14 @@ class VPN:
 
     @property
     def cmd(self):
-        return ('sudo openvpn --config %s '
-                '%s '
-                '--route-noexec --auth-nocache '
-                '--script-security 2 --route-up %s'
+        return ('sudo openvpn --config %s%s%s'
                 % (self.conf_file,
-                   '--mssfix 1363' if self.mask_mtu \
+                   ' --mssfix 1363' if self.mask_mtu \
                    else '',
-                   self.route_up_script))
+                   ' --route-noexec --auth-nocache '
+                   '--script-security 2 --route-up %s'
+                   % self.route_up_script if not self.default_route \
+                   else ''))
 
 
     def _get_id(self):
@@ -204,7 +210,7 @@ class VPN:
 
     def connect(self):
         if self.connected: self.disconnect()
-        self.create_route_up_script()
+        if not self.default_route: self.create_route_up_script()
         while not self.connected and self._select_conf_file():
             self.vpn_process = pexpect.spawn(self.cmd,
                                              cwd=self.conf_dir,
@@ -232,7 +238,7 @@ class VPN:
             except pexpect.TIMEOUT:
                 self.log.debug(self.vpn_process.before)
                 self.log.error('Connection failed!')
-        self.delete_route_up_script()
+        if not self.default_route: self.delete_route_up_script()
         self.instances.insert(self.id, self)
         self._init_requests()
         self.check_ip()
