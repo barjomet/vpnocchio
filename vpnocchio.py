@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.12'
+__version__ = '0.0.13'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -64,7 +64,10 @@ class VPN:
     one_connection_per_conf = True
     req_timeout = 3
     route_up_script = None
+    timeout = 15
     vpn_process = None
+    witch_mtu_regex = re.compile('MTU\s+=\s(.*)')
+    witch_openvpn_regex = re.compile('(.*OpenVPN detected[^<]*)')
 
 
     def __init__(self, username=None,
@@ -175,7 +178,6 @@ class VPN:
         return True
 
 
-
     def check_ip(self):
         for attempt in range(len(self.ip_services)):
             try:
@@ -185,6 +187,19 @@ class VPN:
                 return self.ip
             except:
                 self.ip_services.append(self.ip_services.pop(0))
+
+
+    def check_witch(self):
+        r = self.get('http://witch.valdikss.org.ru/', timeout=self.timeout)
+        try:
+            mtu = self.witch_mtu_regex.search(r.text).group(1)
+            message = self.witch_openvpn_regex.search(r.text).group(1)
+            is_openvpn_detected  = False if u'No OpenVPN detected' \
+                                         in message \
+                                         else True
+            return dict(mtu=mtu, detected=is_openvpn_detected, msg=message)
+        except AttributeError:
+            self.log.warning('Failed to parse W I T C H response')
 
 
     def connect(self):
