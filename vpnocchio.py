@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.14'
+__version__ = '0.0.16'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -45,7 +45,7 @@ class VPN:
     conf_files = None
     conf_match = '\.ovpn'
     connected = 0
-    connect_timeout = 15
+    connect_timeout = 60
     instances = []
     interface = None
     interface_addr = None
@@ -64,7 +64,7 @@ class VPN:
     one_connection_per_conf = True
     req_timeout = 3
     route_up_script = None
-    timeout = 15
+    timeout = 30
     vpn_process = None
     witch_mtu_regex = re.compile('MTU\s+=\s(.*)')
     witch_openvpn_regex = re.compile('(.*OpenVPN detected[^<]*)')
@@ -236,6 +236,7 @@ class VPN:
                 self.log.debug(self.vpn_process.before)
                 self.log.error('Invalid username and/or password')
             except pexpect.TIMEOUT:
+                self.disconnect()
                 self.log.debug(self.vpn_process.before)
                 self.log.error('Connection failed!')
         if not self.default_route: self.delete_route_up_script()
