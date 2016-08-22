@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.16'
+__version__ = '0.0.17'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -59,12 +59,13 @@ class VPN:
     ]
     log = logging.getLogger(__name__)
     log.addHandler(logging.NullHandler())
-    mask_mtu = False
+    mssfix = None
     min_time_before_reconnect = 30
     one_connection_per_conf = True
     req_timeout = 3
     route_up_script = None
     timeout = 30
+    tun_mtu = None
     vpn_process = None
     witch_mtu_regex = re.compile('MTU\s+=\s(.*)')
     witch_openvpn_regex = re.compile('(.*OpenVPN detected[^<]*)')
@@ -74,7 +75,8 @@ class VPN:
                        password=None,
                        conf_match=None,
                        default_route=False,
-                       mask_mtu=False,
+                       mssfix=None,
+                       tun_mtu=None,
                        timeout=None,
                        id=None,
                        useragent=None):
@@ -82,7 +84,8 @@ class VPN:
         if id != None: self.id = id
         else: self.id = self._get_id()
         self.default_route = default_route
-        if mask_mtu: self.mask_mtu = True
+        if mssfix: self.mssfix = mssfix
+        if tun_mtu: self.tun_mtu = tun_mtu
         if timeout: self.timeout = timeout
 
         self._init_logging()
@@ -115,9 +118,11 @@ class VPN:
 
     @property
     def cmd(self):
-        return ('sudo openvpn --config %s%s%s'
+        return ('sudo openvpn --config %s%s%s%s'
                 % (self.conf_file,
-                   ' --mssfix 1363' if self.mask_mtu \
+                   ' --tun-mtu %s' % self.tun_mtu if self.tun_mtu \
+                   else '',
+                   ' --mssfix %s' % self.mssfix if self.mssfix \
                    else '',
                    ' --route-noexec --auth-nocache '
                    '--script-security 2 --route-up %s'
