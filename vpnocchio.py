@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.17'
+__version__ = '0.0.18'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -44,7 +44,8 @@ class VPN:
     conf_file = None
     conf_files = None
     conf_match = '\.ovpn'
-    connected = 0
+    connected = False
+    connected_at = 0
     connect_timeout = 60
     instances = []
     interface = None
@@ -236,7 +237,8 @@ class VPN:
                 self.log.info('Connected')
                 self._get_interface_addr()
                 self.log.debug('Interface addr: %s', self.interface_addr)
-                self.connected = time.time()
+                self.connected = True
+                self.connected_at = time.time()
             except pexpect.EOF:
                 self.log.debug(self.vpn_process.before)
                 self.log.error('Invalid username and/or password')
@@ -274,30 +276,33 @@ class VPN:
         if self.vpn_process is not None:
             try:
                 self.vpn_process.sendcontrol('c')
-                time.sleep(0.5)
-                while self._is_running:
-                    try:
-                        self.vpn_process.close()
-                    except ptyprocess.ptyprocess.PtyProcessError:
-                        pass
-                    time.sleep(0.1)
-                self.connected = 0
-                self.instances.remove(self)
-                self.log.info('Disconnected')
             except ValueError:
                 subprocess.call(['sudo', 'kill', str(self.vpn_process.pid)])
+            time.sleep(0.5)
+            while self._is_running:
+                try:
+                    self.vpn_process.close()
+                except ptyprocess.ptyprocess.PtyProcessError:
+                    pass
+                time.sleep(0.1)
+            self.connected = False
+            self.instances.remove(self)
+            self.vpn_process = self.ip = self.conf_file = None
+            self.log.info('Disconnected')
+        else:
+            self.log.warning('Not connected')
 
 
     def new_ip(self):
+        self.disconnect()
         if self.min_time_before_reconnect:
-            seconds_since_last_connect = time.time() - self.connected
+            seconds_since_last_connect = time.time() - self.connected_at
             if seconds_since_last_connect < self.min_time_before_reconnect:
                 seconds_to_wait = self.min_time_before_reconnect \
                                   - seconds_since_last_connect
                 self.log.warning("We'll wait %3.1f seconds before reconnect",
                                  seconds_to_wait)
                 time.sleep(seconds_to_wait)
-        self.disconnect()
         self.connect()
 
 
