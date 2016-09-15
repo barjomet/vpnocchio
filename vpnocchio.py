@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.18'
+__version__ = '0.0.19'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -240,12 +240,13 @@ class VPN:
                 self.connected = True
                 self.connected_at = time.time()
             except pexpect.EOF:
+                self.disconnect()
                 self.log.debug(self.vpn_process.before)
-                self.log.error('Invalid username and/or password')
+                self.log.error('Connection refused.')
             except pexpect.TIMEOUT:
                 self.disconnect()
                 self.log.debug(self.vpn_process.before)
-                self.log.error('Connection failed!')
+                self.log.error('Connection failed! Time is out.')
         if not self.default_route: self.delete_route_up_script()
         self.instances.insert(self.id, self)
         self._init_requests()
@@ -286,7 +287,10 @@ class VPN:
                     pass
                 time.sleep(0.1)
             self.connected = False
-            self.instances.remove(self)
+            try:
+                self.instances.remove(self)
+            except ValueError:
+                pass
             self.vpn_process = self.ip = self.conf_file = None
             self.log.info('Disconnected')
         else:
