@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.19'
+__version__ = '0.0.20'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -44,6 +44,7 @@ class VPN:
     conf_file = None
     conf_files = None
     conf_match = '\.ovpn'
+    conf_exclude = 'Virtual'
     connected = False
     connected_at = 0
     connect_timeout = 60
@@ -75,6 +76,7 @@ class VPN:
     def __init__(self, username=None,
                        password=None,
                        conf_match=None,
+                       conf_exclude = None,
                        default_route=False,
                        mssfix=None,
                        tun_mtu=None,
@@ -96,6 +98,7 @@ class VPN:
         self.password = password
         self.useragent = useragent
 
+        if conf_exclude : self.conf_exclude = conf_exclude
         self._get_conf_files(conf_match or self.conf_match)
         self.connect()
 
@@ -145,6 +148,9 @@ class VPN:
         self.conf_files = [f for f in os.listdir(self.conf_dir)
                            if os.path.isfile(os.path.join(self.conf_dir, f))
                            and filename_regex.search(f)]
+        if self.conf_exclude:
+            self.conf_files = [f for f in self.conf_files
+                               if not self.conf_exclude in f]
         return self.conf_files
 
 
@@ -245,7 +251,10 @@ class VPN:
                 self.log.error('Connection refused.')
             except pexpect.TIMEOUT:
                 self.disconnect()
-                self.log.debug(self.vpn_process.before)
+                try:
+                    self.log.debug(self.vpn_process.before)
+                except AttributeError:
+                    pass
                 self.log.error('Connection failed! Time is out.')
         if not self.default_route: self.delete_route_up_script()
         self.instances.insert(self.id, self)
@@ -282,7 +291,7 @@ class VPN:
             time.sleep(0.5)
             while self._is_running:
                 try:
-                    self.vpn_process.close()
+                    self.vpn_process.close(True)
                 except ptyprocess.ptyprocess.PtyProcessError:
                     pass
                 time.sleep(0.1)
