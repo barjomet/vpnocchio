@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.20'
+__version__ = '0.0.21'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -246,9 +246,9 @@ class VPN:
                 self.connected = True
                 self.connected_at = time.time()
             except pexpect.EOF:
-                self.disconnect()
                 self.log.debug(self.vpn_process.before)
                 self.log.error('Connection refused.')
+                self.disconnect()
             except pexpect.TIMEOUT:
                 self.disconnect()
                 try:
