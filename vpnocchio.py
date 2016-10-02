@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.21'
+__version__ = '0.0.22'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -40,6 +40,7 @@ exit 0"""
 
 class VPN:
 
+    auth_user_pass = None
     conf_dir = '/etc/openvpn'
     conf_file = None
     conf_files = None
@@ -61,6 +62,7 @@ class VPN:
     ]
     log = logging.getLogger(__name__)
     log.addHandler(logging.NullHandler())
+    management_unix_socket = None
     mssfix = None
     min_time_before_reconnect = 30
     one_connection_per_conf = True
@@ -70,7 +72,10 @@ class VPN:
     tun_mtu = None
     vpn_process = None
     witch_mtu_regex = re.compile('MTU\s+=\s(.*)')
-    witch_openvpn_regex = re.compile('(.*OpenVPN detected[^<]*)')
+    witch_openvpn_regex = re.compile('(.*(?:OpenVPN detected|'
+                                     'Probably OpenVPN)[^<^\n]*)')
+    use_pexpect = False
+    use_sudo = True
 
 
     def __init__(self, username=None,
@@ -107,6 +112,14 @@ class VPN:
                 % (self.id, self.conf_file, self.ip))
 
 
+    @staticmethod
+    def killall():
+        if subprocess.call(['sudo', 'killall', 'openvpn']) == 0:
+            return True
+        else:
+            return False
+
+
     @property
     def _is_running(self):
         try:
@@ -122,16 +135,116 @@ class VPN:
 
     @property
     def cmd(self):
-        return ('sudo openvpn --config %s%s%s%s'
-                % (self.conf_file,
-                   ' --tun-mtu %s' % self.tun_mtu if self.tun_mtu \
-                   else '',
-                   ' --mssfix %s' % self.mssfix if self.mssfix \
-                   else '',
-                   ' --route-noexec --auth-nocache '
-                   '--script-security 2 --route-up %s'
-                   % self.route_up_script if not self.default_route \
-                   else ''))
+        return ' '.join(self.cmd_list)
+
+
+    @property
+    def cmd_list(self):
+        self.management_unix_socket = tempfile.mkstemp()[1]
+        return [str(i) for i in
+                    (['sudo'] if self.use_sudo else []) +\
+                    ['openvpn', '--config', self.conf_file] +\
+                    (['--auth-user-pass', self.auth_user_pass]
+                    if self.auth_user_pass else []) +\
+                    (['--tun-mtu', self.tun_mtu] if self.tun_mtu else []) +\
+                    (['--mssfix', self.mssfix] if self.mssfix else []) +\
+                    (['--route-noexec', '--auth-nocache',
+                    '--script-security', '2',
+                    '--route-up', self.route_up_script]
+                    if not self.default_route else []) +\
+                    ['--management', self.management_unix_socket, 'unix']]
+
+
+    def _connect_method(self):
+        if self.use_pexpect:
+            return self._connect_pexepect()
+        else:
+            return self._connect_subprocess()
+
+
+    def _connect_pexepect(self):
+        self.vpn_process = pexpect.spawn(self.cmd,
+                                         cwd=self.conf_dir,
+                                         timeout=self.connect_timeout)
+        try:
+            if self.username and self.password:
+                self.vpn_process.expect('Enter Auth Username:')
+                self.vpn_process.sendline(self.username)
+                self.vpn_process.expect('Enter Auth Password:')
+                self.vpn_process.sendline(self.password)
+
+            self.vpn_process.expect('.* TUN/TAP device (.*) opened')
+            self.interface = self.vpn_process.match.group(1)
+            self.vpn_process.expect('Initialization Sequence Completed')
+            return True
+        except pexpect.EOF:
+            self.log.debug(self.vpn_process.before)
+            self.log.error('Connection refused.')
+        except pexpect.TIMEOUT:
+            try:
+                self.log.debug(self.vpn_process.before)
+            except AttributeError:
+                pass
+            self.log.error('Connection failed! Time is out.')
+        self.disconnect()
+        return False
+
+
+    def _connect_subprocess(self):
+        error_regex = re.compile('error', re.IGNORECASE)
+        interface_regex = re.compile('.* TUN/TAP device (.*) opened')
+        success_regex = re.compile('Initialization Sequence Completed')
+        self._create_auth_file()
+        self.vpn_process = subprocess.Popen(self.cmd_list,
+                                            cwd=self.conf_dir,
+                                            stdout=subprocess.PIPE,
+                                            universal_newlines=True)
+
+        vpn_launched = time.time()
+        try:
+            while True:
+                if time.time() - vpn_launched > self.connect_timeout:
+                    self.log.error('Connection failed! Time is out.')
+                stdout = self.vpn_process.stdout.readline()
+                interface_match = interface_regex.match(stdout)
+                if interface_match:
+                    self.interface = interface_match.group(1)
+                if error_regex.search(stdout):
+                    self.log.error('OpenVPN: %s', stdout)
+                if success_regex.search(stdout):
+                    return True
+                time.sleep(.1)
+        except ValueError as e:
+            self.log.debug('Connection failed.')
+        finally:
+            self._delete_auth_file()
+
+
+    def _create_auth_file(self):
+        with tempfile.NamedTemporaryFile(delete=False) as _file:
+            self.auth_user_pass = _file.name
+            _file.write("%s\n%s" % (self.username, self.password))
+
+
+    def _create_route_up_script(self):
+        with tempfile.NamedTemporaryFile(delete=False) as _file:
+            self.route_up_script = _file.name
+            _file.write(ROUTE_UP_SCRIPT)
+        st = os.stat(self.route_up_script)
+        os.chmod(self.route_up_script, st.st_mode |\
+                                       stat.S_IXUSR |\
+                                       stat.S_IXGRP |\
+                                       stat.S_IXOTH)
+
+
+    def _delete_auth_file(self):
+        os.remove(self.auth_user_pass)
+        self.auth_user_pass = None
+
+
+    def _delete_route_up_script(self):
+        os.remove(self.route_up_script)
+        self.route_up_script = None
 
 
     def _get_id(self):
@@ -162,6 +275,7 @@ class VPN:
             struct.pack('256s',
             self.interface[:15])
         )[20:24])
+        s.close()
 
 
     def _init_logging(self):
@@ -177,6 +291,16 @@ class VPN:
                                   .SourceAddressAdapter(self.interface_addr)
         self.session.mount('http://', source)
         self.session.mount('https://', source)
+
+
+    def _kill(self):
+        try:
+            if self.use_sudo:
+                subprocess.call(['sudo', 'kill', str(self.vpn_process.pid)])
+            else:
+                os.kill(self.vpn_process.pid, 9)
+        except Exception as e:
+            self.log.warning('Unable to kill openvpn: %r', e)
 
 
     def _select_conf_file(self):
@@ -195,6 +319,15 @@ class VPN:
         self.conf_file = random.choice(conf_files)
         return True
 
+
+    def _terminate(self):
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.connect(self.management_unix_socket)
+            sock.send('signal SIGTERM\r\n')
+            sock.recv(1)
+        except Exception as e:
+            self.log.warning('Failed to terminate OpenVPN process: %r', e)
 
     def check_ip(self):
         for attempt in range(len(self.ip_services)):
@@ -222,60 +355,20 @@ class VPN:
 
     def connect(self):
         if self.connected: self.disconnect()
-        if not self.default_route: self.create_route_up_script()
+        if not self.default_route: self._create_route_up_script()
         while not self.connected and self._select_conf_file():
-            self.vpn_process = pexpect.spawn(self.cmd,
-                                             cwd=self.conf_dir,
-                                             timeout=self.connect_timeout)
-
-            try:
-                if self.username and self.password:
-                    self.vpn_process.expect('Enter Auth Username:')
-                    self.vpn_process.sendline(self.username)
-                    self.vpn_process.expect('Enter Auth Password:')
-                    self.vpn_process.sendline(self.password)
-
-                self.log.info('Connecting using config:%s', self.conf_file)
-                self.vpn_process.expect('.* TUN/TAP device (.*) opened')
-                self.interface = self.vpn_process.match.group(1)
-                self.log.debug('Interface: %s', self.interface)
-                self.vpn_process.expect('Initialization Sequence Completed')
+            self.log.info('Connecting using config:%s', self.conf_file)
+            if self._connect_method():
                 self.log.info('Connected')
+                self.log.debug('Interface: %s', self.interface)
                 self._get_interface_addr()
                 self.log.debug('Interface addr: %s', self.interface_addr)
                 self.connected = True
                 self.connected_at = time.time()
-            except pexpect.EOF:
-                self.log.debug(self.vpn_process.before)
-                self.log.error('Connection refused.')
-                self.disconnect()
-            except pexpect.TIMEOUT:
-                self.disconnect()
-                try:
-                    self.log.debug(self.vpn_process.before)
-                except AttributeError:
-                    pass
-                self.log.error('Connection failed! Time is out.')
-        if not self.default_route: self.delete_route_up_script()
+        if not self.default_route: self._delete_route_up_script()
         self.instances.insert(self.id, self)
         self._init_requests()
         self.check_ip()
-
-
-    def create_route_up_script(self):
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            self.route_up_script = f.name
-            f.write(ROUTE_UP_SCRIPT)
-        st = os.stat(self.route_up_script)
-        os.chmod(self.route_up_script, st.st_mode |\
-                                       stat.S_IXUSR |\
-                                       stat.S_IXGRP |\
-                                       stat.S_IXOTH)
-
-
-    def delete_route_up_script(self):
-        os.remove(self.route_up_script)
-        self.route_up_script = None
 
 
     def get(self, *args, **kwargs):
@@ -285,15 +378,18 @@ class VPN:
     def disconnect(self):
         if self.vpn_process is not None:
             try:
-                self.vpn_process.sendcontrol('c')
+                self._terminate()
             except ValueError:
-                subprocess.call(['sudo', 'kill', str(self.vpn_process.pid)])
+                self._kill()
             time.sleep(0.5)
             while self._is_running:
-                try:
-                    self.vpn_process.close(True)
-                except ptyprocess.ptyprocess.PtyProcessError:
-                    pass
+                if self.use_pexpect:
+                    try:
+                        self.vpn_process.close(True)
+                    except ptyprocess.ptyprocess.PtyProcessError:
+                        pass
+                else:
+                    self.vpn_process.wait()
                 time.sleep(0.1)
             self.connected = False
             try:
@@ -319,7 +415,6 @@ class VPN:
         self.connect()
 
 
-
     def post(self, *args, **kwargs):
         return self.session.post(*args, **kwargs)
 
@@ -329,8 +424,8 @@ class VPN:
 def init_logging(level=logging.DEBUG):
     root = logging.getLogger()
     root.setLevel(level)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(level)
+    consolehandler = logging.StreamHandler(sys.stdout)
+    consolehandler.setLevel(level)
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] [%(name)s] %(message)s', '%Y-%m-%d %H:%M:%S')
-    ch.setFormatter(formatter)
-    root.addHandler(ch)
+    consolehandler.setFormatter(formatter)
+    root.addHandler(consolehandler)
