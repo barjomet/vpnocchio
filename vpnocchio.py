@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.22'
+__version__ = '0.0.23'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -205,6 +205,8 @@ class VPN:
             while True:
                 if time.time() - vpn_launched > self.connect_timeout:
                     self.log.error('Connection failed! Time is out.')
+                    self.disconnect()
+                    return False
                 stdout = self.vpn_process.stdout.readline()
                 interface_match = interface_regex.match(stdout)
                 if interface_match:
@@ -216,6 +218,8 @@ class VPN:
                 time.sleep(.1)
         except ValueError as e:
             self.log.debug('Connection failed.')
+            self.disconnect()
+            return False
         finally:
             self._delete_auth_file()
 
