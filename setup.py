@@ -1,6 +1,6 @@
 from distutils.core import setup
 
-VERSION = "0.0.23"
+VERSION = "0.0.24"
 
 long_description = """How to use::
 

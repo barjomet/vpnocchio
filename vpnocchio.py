@@ -21,7 +21,7 @@ import requests_toolbelt
 from user_agent import generate_user_agent
 
 
-__version__ = '0.0.23'
+__version__ = '0.0.24'
 __author__ = 'Oleksii Ivanchuk (barjomet@barjomet.com)'
 
 
@@ -148,7 +148,7 @@ class VPN:
                     if self.auth_user_pass else []) +\
                     (['--tun-mtu', self.tun_mtu] if self.tun_mtu else []) +\
                     (['--mssfix', self.mssfix] if self.mssfix else []) +\
-                    (['--route-noexec', '--auth-nocache',
+                    (['--route-noexec',
                     '--script-security', '2',
                     '--route-up', self.route_up_script]
                     if not self.default_route else []) +\
