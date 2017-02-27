@@ -10,6 +10,7 @@ Installation
 
 Usage
 =====
+hint: you should run this as root or set NOPASSWD sudo to run openvpn
 ```
 from vpnocchio import VPN, init_logging
 from threading import Thread
