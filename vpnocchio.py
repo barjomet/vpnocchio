@@ -87,7 +87,8 @@ class VPN:
                        tun_mtu=None,
                        timeout=None,
                        id=None,
-                       useragent=None):
+                       useragent=None,
+                       conf_file_list = None):
 
         if id != None: self.id = id
         else: self.id = self._get_id()
@@ -104,7 +105,10 @@ class VPN:
         self.useragent = useragent
 
         if conf_exclude : self.conf_exclude = conf_exclude
-        self._get_conf_files(conf_match or self.conf_match)
+        if conf_file_list:
+            self.conf_files = conf_file_list
+        else:
+            self._get_conf_files(conf_match or self.conf_match)
         self.connect()
 
     def __repr__(self):
