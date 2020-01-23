@@ -229,13 +229,13 @@ class VPN:
 
 
     def _create_auth_file(self):
-        with tempfile.NamedTemporaryFile(delete=False) as _file:
+        with tempfile.NamedTemporaryFile('w', delete=False) as _file:
             self.auth_user_pass = _file.name
             _file.write("%s\n%s" % (self.username, self.password))
 
 
     def _create_route_up_script(self):
-        with tempfile.NamedTemporaryFile(delete=False) as _file:
+        with tempfile.NamedTemporaryFile('w', delete=False) as _file:
             self.route_up_script = _file.name
             _file.write(ROUTE_UP_SCRIPT)
         st = os.stat(self.route_up_script)
